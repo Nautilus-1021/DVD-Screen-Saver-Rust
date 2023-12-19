@@ -1,0 +1,20 @@
+[package]
+name = "dvd_screen_saver_rs"
+version = "1.0.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[profile.release]
+lto = true
+
+[dependencies]
+glm = { version = "0.18.0", package = "nalgebra-glm" }
+glow = "0.13.0"
+glutin = "0.31.1"
+glutin-winit = "0.4.2"
+imagine = "0.5.1"
+raw-window-handle = { version = "0.5.2", features = ["std"] }
+tinyrand = "0.5.0"
+tinyrand-std = "0.5.0"
+winit = "0.29.4"
