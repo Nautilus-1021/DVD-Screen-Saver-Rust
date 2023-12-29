@@ -26,34 +26,9 @@ fn main() {
     
     let PhysicalSize { width, height } = wnd.inner_size();
 
-    let (dvd_tex, scale) = unsafe {
-        let dvd_image = {
-            let dvd_image_bytes = include_bytes!("DVD_Image.png");
+    let screen_ratio = width as f64 / height as f64;
 
-            let bitmap: imagine::Bitmap = imagine::try_bitmap_rgba(dvd_image_bytes, false).unwrap();
-
-            let imagine::Bitmap { width, height, pixels } = bitmap;
-
-            let next_pixels = pixels.iter().flat_map(|pixel| {[pixel.r, pixel.g, pixel.b, pixel.a]}).collect::<Vec<_>>();
-
-            (width, height, next_pixels)
-        };
-
-        let tex = ctx.create_texture().unwrap();
-        ctx.bind_texture(glow::TEXTURE_2D, Some(tex));
-
-        ctx.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_BORDER as i32);
-        ctx.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_BORDER as i32);
-        ctx.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR_MIPMAP_LINEAR as i32);
-        ctx.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
-
-        ctx.tex_image_2d(glow::TEXTURE_2D, 0, glow::SRGB8_ALPHA8 as i32, dvd_image.0 as i32, dvd_image.1 as i32, 0, glow::RGBA, glow::UNSIGNED_BYTE, Some(dvd_image.2.as_slice()));
-        ctx.generate_mipmap(glow::TEXTURE_2D);
-
-        let scale = (IMG_SCALE_X * (width as f64/height as f64)) / (dvd_image.0 as f64 / dvd_image.1 as f64);
-
-        (tex, scale)
-    };
+    let (dvd_tex, scale) = load_texture(&ctx, width as f64, height as f64).unwrap();
 
     let triangle = unsafe {
         gl_surface.set_swap_interval(&glutin_ctx, SwapInterval::Wait(NonZeroU32::new_unchecked(1))).unwrap();
@@ -104,7 +79,7 @@ fn main() {
                     last_time = act_time;
 
                     dvd_x += delta_time.as_secs_f64() * DVD_SPEED * direction.0;
-                    dvd_y += delta_time.as_secs_f64() * DVD_SPEED * direction.1 * (width as f64 / height as f64);
+                    dvd_y += delta_time.as_secs_f64() * DVD_SPEED * direction.1 * screen_ratio;
 
                     match dvd_x {
                         x if x + IMG_SCALE_X > 2.0 => {
@@ -130,7 +105,7 @@ fn main() {
                         _ => ()
                     }
 
-                    model = glm::translate(&model, &Vec3::new(dvd_x as f32, dvd_y as f32, 0.0));
+                    model.append_translation_mut(&Vec3::new(dvd_x as f32, dvd_y as f32, 0.0));
 
                     ctx.uniform_matrix_4_f32_slice(Some(&model_loc), false, model.as_slice());
 
@@ -141,7 +116,7 @@ fn main() {
                     ctx.bind_texture(glow::TEXTURE_2D, Some(dvd_tex));
 
                     ctx.bind_vertex_array(Some(triangle.0));
-                    ctx.draw_elements(glow::TRIANGLES, 6, glow::UNSIGNED_BYTE, 0);
+                    ctx.draw_elements(glow::TRIANGLE_FAN, 6, glow::UNSIGNED_BYTE, 0);
                     ctx.bind_vertex_array(None);
 
                     ctx.bind_texture(glow::TEXTURE_2D, None);
@@ -187,14 +162,17 @@ fn create_window() -> Result<(EventLoop<()>, Window, Display, NotCurrentContext,
 
 unsafe fn setup_rectangle<CTX: HasContext>(ctx: &CTX, img_scale_y: f64) -> Result<(CTX::VertexArray, CTX::Program), Box<dyn Error>> {
     let triangle_data = [
-        -1.0,  1.0, 0.0, 1.0,
-        -1.0 + IMG_SCALE_X, 1.0, 1.0, 1.0,
+        -1.0,               1.0,               0.0, 1.0,
+        -1.0 + IMG_SCALE_X, 1.0,               1.0, 1.0,
         -1.0 + IMG_SCALE_X, 1.0 - img_scale_y, 1.0, 0.0,
-        -1.0,  1.0 - img_scale_y, 0.0, 0.0
+        -1.0,               1.0 - img_scale_y, 0.0, 0.0
     ];
     let triangle_faces = [
-        0, 1, 3_u8,
-        1, 2, 3
+        0, 1, 2, 2, 3_u8
+
+        // Triangle fan mode generates:
+        // [0, 1, 2]
+        // [0, 2, 3]
     ];
 
     let vao = ctx.create_vertex_array()?;
@@ -217,6 +195,37 @@ unsafe fn setup_rectangle<CTX: HasContext>(ctx: &CTX, img_scale_y: f64) -> Resul
     let shader = basic_shaders(ctx)?;
 
     Ok((vao, shader))
+}
+
+const IMG_BYTES: &[u8] = include_bytes!("DVD_Image.png");
+
+fn load_texture<CTX: HasContext>(ctx: &CTX, width: f64, height: f64) -> Result<(CTX::Texture, f64), Box<dyn Error>> {
+    unsafe {
+        let dvd_image = {
+            let bitmap: imagine::Bitmap = imagine::try_bitmap_rgba(IMG_BYTES, false).map_err(|err_msg| {Box::<dyn Error>::from(format!("Imagine error: {:?}", err_msg))})?;
+
+            let imagine::Bitmap { width, height, pixels } = bitmap;
+
+            let next_pixels = pixels.iter().flat_map(|pixel| {[pixel.r, pixel.g, pixel.b, pixel.a]}).collect::<Vec<_>>();
+
+            (width, height, next_pixels)
+        };
+
+        let tex = ctx.create_texture()?;
+        ctx.bind_texture(glow::TEXTURE_2D, Some(tex));
+
+        ctx.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_BORDER as i32);
+        ctx.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_BORDER as i32);
+        ctx.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR_MIPMAP_LINEAR as i32);
+        ctx.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
+
+        ctx.tex_image_2d(glow::TEXTURE_2D, 0, glow::SRGB8_ALPHA8 as i32, dvd_image.0 as i32, dvd_image.1 as i32, 0, glow::RGBA, glow::UNSIGNED_BYTE, Some(dvd_image.2.as_slice()));
+        ctx.generate_mipmap(glow::TEXTURE_2D);
+
+        let scale = (IMG_SCALE_X * (width / height)) / (dvd_image.0 as f64 / dvd_image.1 as f64);
+
+        Ok((tex, scale))
+    }
 }
 
 const VERT_SHADER: &str = "
