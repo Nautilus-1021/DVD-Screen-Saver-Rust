@@ -38,6 +38,8 @@ fn main() {
         ctx.enable(glow::BLEND);
         ctx.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
 
+        ctx.viewport(0, 0, width as i32, height as i32);
+
         setup_rectangle(&ctx, scale).unwrap()
     };
 
@@ -125,6 +127,9 @@ fn main() {
                     wnd.request_redraw();
                 }
             }
+            Event::LoopExiting => {
+                wnd.set_cursor_visible(true);
+            }
             _event => ()
         }
     }).unwrap();
@@ -148,6 +153,8 @@ fn create_window() -> Result<(EventLoop<()>, Window, Display, NotCurrentContext,
         }).unwrap()})?;
 
     let wnd = wnd.unwrap();
+
+    wnd.set_cursor_visible(false);
 
     let gl_display = gl_config.display();
 
