@@ -148,6 +148,29 @@ fn create_window() -> Result<(EventLoop<()>, Window, Display, NotCurrentContext,
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Poll);
 
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    let window_builder = {
+        let monitor = match event_loop.primary_monitor() {
+            Some(mon) => mon,
+            None => event_loop.available_monitors().next().expect("Failed to get a monitor")
+        };
+    
+        let video_mode = monitor.video_modes().reduce(|acc, mode| {
+            if mode.size() > acc.size() {
+                return mode
+            } else if mode.size() == acc.size() {
+                if mode.refresh_rate_millihertz() > acc.refresh_rate_millihertz() {
+                    return mode
+                }
+            }
+            
+            acc
+        }).unwrap();
+
+        WindowBuilder::new().with_fullscreen(Some(Fullscreen::Exclusive(video_mode))).with_title("DVD Screen Saver")
+    };
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     let window_builder = WindowBuilder::new().with_fullscreen(Some(Fullscreen::Borderless(None))).with_title("DVD Screen Saver");
 
     let config_template = ConfigTemplateBuilder::new().with_api(Api::OPENGL);
@@ -155,7 +178,7 @@ fn create_window() -> Result<(EventLoop<()>, Window, Display, NotCurrentContext,
     let display_builder = DisplayBuilder::new().with_window_builder(Some(window_builder));
 
     let (wnd, gl_config) = display_builder.build(&event_loop, config_template, |configs| {configs.reduce(|acc, config| {
-            if config.num_samples() == 0 {
+            if config.num_samples() > acc.num_samples() {
                 return config
             }
             acc
