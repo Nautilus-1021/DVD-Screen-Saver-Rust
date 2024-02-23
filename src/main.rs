@@ -1,7 +1,7 @@
 use std::{error::Error, num::NonZeroU32, mem::size_of, time::Instant};
 
 use glow::HasContext;
-use glutin::{config::{ConfigTemplateBuilder, Api, GlConfig, Config}, context::{ContextAttributesBuilder, ContextApi, Version, GlProfile, NotCurrentContext, NotCurrentGlContext}, display::{GetGlDisplay, GlDisplay, Display}, surface::{GlSurface, SwapInterval}};
+use glutin::{config::{Api, Config, ConfigTemplateBuilder, GlConfig}, context::{ContextApi, ContextAttributesBuilder, GlContext, GlProfile, NotCurrentContext, NotCurrentGlContext, Version}, display::{Display, GetGlDisplay, GlDisplay}, surface::{GlSurface, SwapInterval}};
 use glutin_winit::{DisplayBuilder, GlWindow};
 use tinyrand_std::thread_rand;
 use winit::{window::{WindowBuilder, Fullscreen, Window}, event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, ElementState}, keyboard::{Key, NamedKey}, dpi::PhysicalSize};
@@ -22,7 +22,16 @@ fn main() {
 
     let glutin_ctx = not_current_context.make_current(&gl_surface).unwrap();
 
+    let ContextApi::OpenGl(gl_version) = glutin_ctx.context_api() else {
+        panic!("Not OpenGL !");
+    };
+    println!("[GLUTIN] OpenGL Version: {}", gl_version.map(|version| { format!("{}.{}", version.major, version.minor) }).unwrap_or("<Unknown>".to_owned()));
+
     let ctx = unsafe {glow::Context::from_loader_function_cstr(|func_name| {gl_display.get_proc_address(func_name)})};
+
+    let gl_version = ctx.version();
+    println!("[GLOW] Running on OpenGL {}.{} (Rev.{})", gl_version.major, gl_version.minor, gl_version.revision.unwrap_or(1));
+    println!("[GLOW] Driver: {}", gl_version.vendor_info);
     
     let PhysicalSize { width, height } = wnd.inner_size();
 
@@ -123,8 +132,8 @@ fn main() {
 
                     ctx.bind_texture(glow::TEXTURE_2D, None);
 
-                    gl_surface.swap_buffers(&glutin_ctx).unwrap();
                     wnd.request_redraw();
+                    gl_surface.swap_buffers(&glutin_ctx).unwrap();
                 }
             }
             Event::LoopExiting => {
@@ -152,15 +161,15 @@ fn create_window() -> Result<(EventLoop<()>, Window, Display, NotCurrentContext,
             acc
         }).unwrap()})?;
 
+    let raw_wnd = wnd.as_ref().map(|window| { window.raw_window_handle() });
+
     let wnd = wnd.unwrap();
 
     wnd.set_cursor_visible(false);
 
     let gl_display = gl_config.display();
 
-    let raw_wnd = wnd.raw_window_handle();
-
-    let context_attributes = ContextAttributesBuilder::new().with_context_api(ContextApi::OpenGl(Some(Version::new(3, 3)))).with_profile(GlProfile::Core).build(Some(raw_wnd));
+    let context_attributes = ContextAttributesBuilder::new().with_context_api(ContextApi::OpenGl(Some(Version::new(3, 3)))).with_profile(GlProfile::Core).build(raw_wnd);
 
     let not_current_context = unsafe {gl_display.create_context(&gl_config, &context_attributes)?};
 
