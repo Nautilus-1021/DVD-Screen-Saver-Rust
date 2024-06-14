@@ -1,8 +1,8 @@
 use std::{mem::size_of, f64::consts::PI};
 
 use glm::Vec3;
+use glow::HasContext;
 use tinyrand::Rand;
-use tinyrand_std::ThreadLocalRand;
 
 const COLORS: [Vec3; 4] = [
     Vec3::new(0.92156862745, 0.25098039215, 0.20392156862),
@@ -22,17 +22,17 @@ pub fn to_radians(degrees: f64) -> f64 {
     degrees * PI / 180.0
 }
 
-pub fn change_color(rng: &mut ThreadLocalRand, color: &mut Vec3) {
+pub fn change_color<CTX: HasContext>(gl_objects: &mut crate::app::OpenGLObjects<CTX>) {
     let next = {
         let mut next_color;
         loop {
-            next_color = COLORS[rng.next_lim_usize(4)];
-            if next_color != *color {
+            next_color = COLORS[gl_objects.rng.next_lim_usize(4)];
+            if next_color != gl_objects.dvd_color {
                 break;
             }
         }
         next_color
     };
 
-    let _ = std::mem::replace(color, next);
+    gl_objects.dvd_color = next;
 }
